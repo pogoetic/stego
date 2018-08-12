@@ -12,13 +12,12 @@ Data sources:
 FRED API (st louis federal reserve)
 """
 
-import requests, json, sqlite3, os, pandas, fredapi
+import json, sqlite3, os, pandas, fredapi
 from fredapikey import apikey
 
 verbose = 1
-headers = {'X-CoinAPI-Key' : CoinAPIKey}
 dir_path = os.path.dirname(os.path.realpath(__file__))
-dbpathname = '/tricero.db'
+dbpathname = '/stego.db'
 
 def echo(msg, verbosity=verbose):
     if verbosity == 1:
@@ -31,8 +30,8 @@ def dbprocess(path):
         echo(msg='Loading DB...',verbosity=1)
         con = sqlite3.connect(str(path)+dbpathname) #connect to existing or create new if does not exist
         cur = con.cursor()
-        cur.execute('CREATE TABLE daily_trades(index bigint, asset varchar(5), exchange varchar(100), time_start datetime, time_end datetime, trades_count bigint, volume_traded decimal(20,10), price_open decimal(20,10), price_high decimal(20,10), price_low decimal(20,10), price_close decimal(20,10))')
-        cur.execute('CREATE INDEX IDX_time ON daily_trades (time_start, time_end)')
+        cur.execute('CREATE TABLE daily_trades([index] bigint, asset varchar(5), exchange varchar(100), time_start datetime, time_end datetime, trades_count bigint, volume_traded decimal(20,10), price_open decimal(20,10), price_high decimal(20,10), price_low decimal(20,10), price_close decimal(20,10))')
+        #cur.execute('CREATE INDEX IDX_time ON daily_trades (time_start, time_end)')
         con.commit()
     except sqlite3.Error, e:
     	echo(msg="Error {}:".format(e.args[0]),verbosity=1)
@@ -41,3 +40,9 @@ def dbprocess(path):
         if con:
             con.close()
 
+#Create or Connect to existing Sqlite DB
+if not os.path.isfile(str(dir_path)+dbpathname):
+    con=dbprocess(path=dir_path)
+
+con = sqlite3.connect(str(dir_path)+dbpathname) #connect to existing sqlite db
+cur = con.cursor()

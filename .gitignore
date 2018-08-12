@@ -1,1 +1,3 @@
 fredapikey.py
+*.db
+*.pyc
