@@ -1,3 +1,27 @@
+
+"""NEXT STEPS:
+
+DATA:
+1. STORE HISTORICAL DATA
+    a. Get recession dates loaded
+    b. Convert all series to daily (generic function)
+    c. Adjust for inflation where necessary (generic function)
+2. DATA UPDATE PROCESS
+    a. daily check for each dataset
+    b. repeat steps 1b/1c
+
+MODEL:
+3. Feature Engineering (trended attributes, etc..)
+4. Employ Prophet for TimeSeries modelling
+    a. 1 Model with wide prediction range (1yr)
+    b. 1 Model with short perdiction range (1mo)
+5. Re-run 'best' models every day and check against prior scores
+
+ALERTS:
+6. Email Alerts if model scores change within a tolerance
+
+"""
+
 """
 Goal: To build a basic economic model for the US Economy in order to roughly predict 
 a downturn. Prob(downturn in 3 months). 
@@ -30,70 +54,13 @@ S&P500 - Measure of total us stock market prices(target)
 Charge Off Rates - FED published for top banks, other source as well
 """
 
-"""
-Paul Comments: 
-There is some work on this already (check Philly Fed and St louis Fed working papers).  I looked at these recently, highlighted the most important in red. I personally feel it is in the following order:
-1.	10-2 yr spread (60%)
-2.	S&P500 vs recent(last 12 or 24mo) peak/high (20%)    
-3.	Change in Housing permits (10%)
-4.	Change in Manufacturing Orders (5%)
-5.	Consumer Sentiment (5%)
-
-•	Manufacturing survey….leading indicator. Given lead times to build, this is historically a leading indicator. It was more pronounce when we were more of a manufacturing based society with less global influence but still predictive.
-•	Housing Permits….. leading indicator given lead time to build. Also note interest rate increases slow consumer demand and construction companies know this. Somewhat correlated to yield curve.
-•	Consumer sentiment….(mich survey) …leading indicator however I feel the S&P500 is a reliable gauge for this and more real time. The two series are highly correlated.
-
-JPMorgan's proprietary model considers the levels of several economic indicators, including consumer sentiment, manufacturing sentiment, building permits, auto sales, and unemployment.
-JPMorgan notes that nonfarm payrolls is actually not part of the model. But the unemployment rate is. Interestingly, a low unemployment rate can be considered an ominous sign.
-
-“The unemployment rate enters the model in two ways," Edgerton explained. "As a near-term indicator, we watch for increases in the unemployment rate that occur near the beginning of recessions. So this morning's move down in the unemployment rate lowered the recession probability in our near-term model. But we also find the level of the unemployment rate to be one of the most useful indicators of medium-term recession risk. So the move down in unemployment raises the model's view of the risk of economic overheating in the medium run and raises the 'background risk' of recession."
-
-Indeed, recessions begin when things are very good. It's only when reports come in that the data has turned that we realize we've been in a recession.
-https://finance.yahoo.com/news/jpmorgan-recession-risk-new-high-160251309.html
-
-Best investments in case of an inverted yield curve
-https://www.wsj.com/articles/the-best-investments-in-case-of-an-inverted-yield-curve-1536545041?emailToken=e7d3ad6442c26d159eb5bc7903c7f80603yQYaTVNumvrlRPOpnMOdMNGYlKz9R0nF7hBawD18PIgfIs2FyveE1L1m8yYL2DkzsrmGL+Gt0ehEfETb7Q1TP6do5LV1+ScyBBPIcgjOqLKKtUfjtFBaeAgRiUo7m2&reflink=article_email_share
-
-Guggenheim Models:
-https://www.guggenheiminvestments.com/perspectives/macroeconomic-research/forecasting-the-next-recession
-https://www.guggenheiminvestments.com/perspectives/macroeconomic-research/updating-our-outlook-for-recession-timing
-Includes cycles ending in 1970, 1980, 1990, 2001, and 2007.
-
-Paul O. - What to do just before recession: 
-Between now and 12 mos from now, bond prices will have pressure so interest rate hedge ETF could better navigate this. Then swap them out 13mos (bypass short term cap gains tax) from now for non hedge versions so you can gain from price increases associate with rate decreases.  Just need to watch out for credit risk in order:
-1.	Junk
-2.	Investment grade Corp
-3.	Muni
-
-
-####OFFICIAL RECESSION DATES
-https://www.nber.org/cycles.html
-
-#Natural rate of interest modelling: 
-https://www.frbsf.org/economic-research/files/wp2016-11.pdf
-https://www.frbsf.org/economic-research/files/el2017-16.pdf
-
-#Economic Uncertainty Index (increases sharply just before recession) (not to be confused with Economic Policy Uncertainty)
-https://www.sydneyludvigson.com/data-and-appendixes/
-https://www.sydneyludvigson.com/s/MacroFinanceUncertainty_2018AUG_update.zip
-
-#Leading Economic Index (LEI)
-The Conference Board Leading Economic Index (LEI), which measures 10 key variables, is itself a recession predictor, albeit a fallible one. 
-It has been irreverently said that the LEI predicted 15 out of the last eight recessions. 
-Nevertheless, growth in the LEI always slows on a year-over-year basis heading into a recession, and turns negative about seven months out, on average. 
-Looking at the current cycle, LEI growth of 4 percent over the past year has been on par with past cycles two years before a recession, and we will be watching for a deceleration over the course of the coming year.
-Leading Economic Index, Year-over-Year % Change
-
-https://www.conference-board.org/data/datasearch.cfm?cid=1&output=2&sector=BCI-01A%20-%20Composite%20Indexes-Leading%20Economic%20Indicators
-#Could scrape the index from their public releases:
-https://www.conference-board.org/data/bcicountry.cfm?cid=1
-
-
-"""
-
-import json, sqlite3, os, pandas
+import json, sqlite3, os, sys
+import pandas as pd
 from fredapikey import apikey
 from fredapi import Fred
+
+pd.set_option('display.max_rows', 50)
+pd.set_option('display.max_columns', 10)
 
 verbose = 1
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -127,6 +94,22 @@ if not os.path.isfile(str(dir_path)+dbpathname):
 
 con = sqlite3.connect(str(dir_path)+dbpathname) #connect to existing sqlite db
 cur = con.cursor()
+
+#Historical Data Load
+#   Recession Dates
+dtype={'c':str,'d':str,'e':int,'f':int,'g':int,'h':int,'i':int,'j':int}
+df = pd.read_excel(io=dir_path+"/required/NBER chronology.xlsx",
+                    sheet_name=0,
+                    header=2,
+                    usecols="C:J",
+                    dtype=dtype,
+                    nrows=34)
+df['Peak month'] = df['Peak month'].apply(lambda x: '01 {}'.format(x))
+df['Trough month'] = df['Trough month'].apply(lambda x: '01 {}'.format(x))
+df_dates = pd.to_datetime(df[['Peak month','Trough month']].stack(),errors='coerce',format='%d %B %Y').unstack()
+df=pd.merge(df, df_dates, left_index=True, right_index=True)[['Peak month_y','Trough month_y','Peak month number','Trough month number','Duration, peak to trough','Duration, trough to peak','Duration, trough to trough','Duration, peak to peak']]
+print(df.head(10))
+sys.exit()
 
 #Trend the S&P by 6mo, 12mo, 24mo. Compare current to prior highs from these periods. 
 #Calc 'months before recession' feature (could be our target)
@@ -225,3 +208,92 @@ print(data.tail())
 #data = fred.search('yield').T
 #print(data)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+"""NOTES:
+
+Paul Comments: 
+There is some work on this already (check Philly Fed and St louis Fed working papers).  I looked at these recently, highlighted the most important in red. I personally feel it is in the following order:
+1.  10-2 yr spread (60%)
+2.  S&P500 vs recent(last 12 or 24mo) peak/high (20%)    
+3.  Change in Housing permits (10%)
+4.  Change in Manufacturing Orders (5%)
+5.  Consumer Sentiment (5%)
+
+•   Manufacturing survey….leading indicator. Given lead times to build, this is historically a leading indicator. It was more pronounce when we were more of a manufacturing based society with less global influence but still predictive.
+•   Housing Permits….. leading indicator given lead time to build. Also note interest rate increases slow consumer demand and construction companies know this. Somewhat correlated to yield curve.
+•   Consumer sentiment….(mich survey) …leading indicator however I feel the S&P500 is a reliable gauge for this and more real time. The two series are highly correlated.
+
+JPMorgan's proprietary model considers the levels of several economic indicators, including consumer sentiment, manufacturing sentiment, building permits, auto sales, and unemployment.
+JPMorgan notes that nonfarm payrolls is actually not part of the model. But the unemployment rate is. Interestingly, a low unemployment rate can be considered an ominous sign.
+
+“The unemployment rate enters the model in two ways," Edgerton explained. "As a near-term indicator, we watch for increases in the unemployment rate that occur near the beginning of recessions. So this morning's move down in the unemployment rate lowered the recession probability in our near-term model. But we also find the level of the unemployment rate to be one of the most useful indicators of medium-term recession risk. So the move down in unemployment raises the model's view of the risk of economic overheating in the medium run and raises the 'background risk' of recession."
+
+Indeed, recessions begin when things are very good. It's only when reports come in that the data has turned that we realize we've been in a recession.
+https://finance.yahoo.com/news/jpmorgan-recession-risk-new-high-160251309.html
+
+Best investments in case of an inverted yield curve
+https://www.wsj.com/articles/the-best-investments-in-case-of-an-inverted-yield-curve-1536545041?emailToken=e7d3ad6442c26d159eb5bc7903c7f80603yQYaTVNumvrlRPOpnMOdMNGYlKz9R0nF7hBawD18PIgfIs2FyveE1L1m8yYL2DkzsrmGL+Gt0ehEfETb7Q1TP6do5LV1+ScyBBPIcgjOqLKKtUfjtFBaeAgRiUo7m2&reflink=article_email_share
+
+Guggenheim Models:
+https://www.guggenheiminvestments.com/perspectives/macroeconomic-research/forecasting-the-next-recession
+https://www.guggenheiminvestments.com/perspectives/macroeconomic-research/updating-our-outlook-for-recession-timing
+Includes cycles ending in 1970, 1980, 1990, 2001, and 2007.
+
+Paul O. - What to do just before recession: 
+Between now and 12 mos from now, bond prices will have pressure so interest rate hedge ETF could better navigate this. Then swap them out 13mos (bypass short term cap gains tax) from now for non hedge versions so you can gain from price increases associate with rate decreases.  Just need to watch out for credit risk in order:
+1.  Junk
+2.  Investment grade Corp
+3.  Muni
+
+
+####OFFICIAL RECESSION DATES
+https://www.nber.org/cycles.html
+
+#Natural rate of interest modelling: 
+https://www.frbsf.org/economic-research/files/wp2016-11.pdf
+https://www.frbsf.org/economic-research/files/el2017-16.pdf
+
+#Economic Uncertainty Index (increases sharply just before recession) (not to be confused with Economic Policy Uncertainty)
+https://www.sydneyludvigson.com/data-and-appendixes/
+https://www.sydneyludvigson.com/s/MacroFinanceUncertainty_2018AUG_update.zip
+
+#Leading Economic Index (LEI)
+The Conference Board Leading Economic Index (LEI), which measures 10 key variables, is itself a recession predictor, albeit a fallible one. 
+It has been irreverently said that the LEI predicted 15 out of the last eight recessions. 
+Nevertheless, growth in the LEI always slows on a year-over-year basis heading into a recession, and turns negative about seven months out, on average. 
+Looking at the current cycle, LEI growth of 4 percent over the past year has been on par with past cycles two years before a recession, and we will be watching for a deceleration over the course of the coming year.
+Leading Economic Index, Year-over-Year % Change
+
+https://www.conference-board.org/data/datasearch.cfm?cid=1&output=2&sector=BCI-01A%20-%20Composite%20Indexes-Leading%20Economic%20Indicators
+#Could scrape the index from their public releases:
+https://www.conference-board.org/data/bcicountry.cfm?cid=1
+
+###USE FACEBOOK PROPHET FOR TIME SERIES MODEL
+http://www.degeneratestate.org/posts/2017/Jul/24/making-a-prophet/
+https://facebook.github.io/prophet/docs/quick_start.html#python-api
+https://peerj.com/preprints/3190.pdf
+
+"""
