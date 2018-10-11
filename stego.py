@@ -5,6 +5,7 @@ DATA:
 1. STORE HISTORICAL DATA
     a. Get recession dates loaded
     b. Convert all series to daily (generic function)
+    https://stackoverflow.com/questions/19324453/add-missing-dates-to-pandas-dataframe
     c. Adjust for inflation where necessary (generic function)
 2. DATA UPDATE PROCESS
     a. daily check for each dataset
@@ -98,18 +99,17 @@ cur = con.cursor()
 #Historical Data Load
 #   Recession Dates
 dtype={'c':str,'d':str,'e':int,'f':int,'g':int,'h':int,'i':int,'j':int}
-df = pd.read_excel(io=dir_path+"/required/NBER chronology.xlsx",
+rcs_df = pd.read_excel(io=dir_path+"/required/NBER chronology.xlsx",
                     sheet_name=0,
                     header=2,
                     usecols="C:J",
                     dtype=dtype,
                     nrows=34)
-df['Peak month'] = df['Peak month'].apply(lambda x: '01 {}'.format(x))
-df['Trough month'] = df['Trough month'].apply(lambda x: '01 {}'.format(x))
-df_dates = pd.to_datetime(df[['Peak month','Trough month']].stack(),errors='coerce',format='%d %B %Y').unstack()
-df=pd.merge(df, df_dates, left_index=True, right_index=True)[['Peak month_y','Trough month_y','Peak month number','Trough month number','Duration, peak to trough','Duration, trough to peak','Duration, trough to trough','Duration, peak to peak']]
-print(df.head(10))
-sys.exit()
+rcs_df['Peak month'] = rcs_df['Peak month'].apply(lambda x: '01 {}'.format(x))
+rcs_df['Trough month'] = rcs_df['Trough month'].apply(lambda x: '01 {}'.format(x))
+df_dates = pd.to_datetime(rcs_df[['Peak month','Trough month']].stack(),errors='coerce',format='%d %B %Y').unstack()
+rcs_df=pd.merge(rcs_df, df_dates, left_index=True, right_index=True)[['Peak month_y','Trough month_y','Peak month number','Trough month number','Duration, peak to trough','Duration, trough to peak','Duration, trough to trough','Duration, peak to peak']]
+print(rcs_df.tail())
 
 #Trend the S&P by 6mo, 12mo, 24mo. Compare current to prior highs from these periods. 
 #Calc 'months before recession' feature (could be our target)
@@ -147,35 +147,6 @@ print(data.tail())
 data = fred.get_series('NROUST') # Natural Rate of Unemployment (Short-Term), Quarterly
 print(data.tail())
 
-
-"""
-Subtracting the natural rate of interest—which is the neutral fed funds rate, neither contractionary nor stimulative for the economy—from the real fed funds rate gives us a gauge of how loose or tight Fed policy is. 
-Leading up to past recessions, the Fed has usually hiked rates beyond the natural rate to cool the labor market and get ahead of inflation, only to inadvertently push the economy into recession. 
-Looking at the current cycle, we expect quarterly rate hikes to resume in December. This will put Fed policy well into restrictive territory next year, barring a sharper increase in the natural rate than we expect.
-*Natural rate is Laubach-Williams one-sided filtered estimate.
-Real Fed Funds Rate – Natural Rate of Interest (r*)
-
-https://www.frbsf.org/economic-research/files/el2017-16.pdf
-Starting with a view of longer-run trends, Figure 1 plots the inflation-adjusted or “real” federal funds rate,
-computed as the nominal federal funds rate minus the trailing four-quarter core personal consumption
-expenditures (PCE) inflation rate. Core inflation tends to be a better predictor of future inflation because it
-removes the volatile food and energy components. 
-
-Might be able to use Potential GDP Growth as a stand-in for proper Laubach-Williams r* model
-
-data = fred.get_series('DFF') # Effective Federal Funds Rate, Daily
-print(data.tail())
-
-#use PCE to adjust for inflation
-data = fred.get_series('PCEPILFE') # Personal Consumption Expenditures Excluding Food and Energy (Chain-Type Price Index), Monthly
-print(data.tail())
-
-#May need for calculation of r*
-data = fred.get_series('GDPPOT') # Real Potential Gross Domestic Product, Quarterly
-print(data.tail())
-
-"""
-
 """
 One of the most reliable and consistent predictors of recession has been the Treasury yield curve. Recessions are always preceded by a flat or inverted yield curve, usually occurring about 12 months before the downturn begins. 
 This occurs with T-bill yields rising as Fed policy becomes restrictive while 10-year yields rise at a slower pace. Looking at the current cycle, we expect that steady increases in the fed funds rate will continue to flatten the yield curve over the next 12–18 months.
@@ -208,11 +179,46 @@ print(data.tail())
 #data = fred.search('yield').T
 #print(data)
 
+#Pull Economic Uncertainty Index
+#https://www.sydneyludvigson.com/data-and-appendixes/
+#https://www.sydneyludvigson.com/s/MacroFinanceUncertainty_2018AUG_update.zip
+
+#Scrape LEI data from web (auto or manual)
+#https://www.conference-board.org/data/bciarchive.cfm?cid=1
 
 
 
 
 
+
+
+"""
+Subtracting the natural rate of interest—which is the neutral fed funds rate, neither contractionary nor stimulative for the economy—from the real fed funds rate gives us a gauge of how loose or tight Fed policy is. 
+Leading up to past recessions, the Fed has usually hiked rates beyond the natural rate to cool the labor market and get ahead of inflation, only to inadvertently push the economy into recession. 
+Looking at the current cycle, we expect quarterly rate hikes to resume in December. This will put Fed policy well into restrictive territory next year, barring a sharper increase in the natural rate than we expect.
+*Natural rate is Laubach-Williams one-sided filtered estimate.
+Real Fed Funds Rate – Natural Rate of Interest (r*)
+
+https://www.frbsf.org/economic-research/files/el2017-16.pdf
+Starting with a view of longer-run trends, Figure 1 plots the inflation-adjusted or “real” federal funds rate,
+computed as the nominal federal funds rate minus the trailing four-quarter core personal consumption
+expenditures (PCE) inflation rate. Core inflation tends to be a better predictor of future inflation because it
+removes the volatile food and energy components. 
+
+Might be able to use Potential GDP Growth as a stand-in for proper Laubach-Williams r* model
+
+data = fred.get_series('DFF') # Effective Federal Funds Rate, Daily
+print(data.tail())
+
+#use PCE to adjust for inflation
+data = fred.get_series('PCEPILFE') # Personal Consumption Expenditures Excluding Food and Energy (Chain-Type Price Index), Monthly
+print(data.tail())
+
+#May need for calculation of r*
+data = fred.get_series('GDPPOT') # Real Potential Gross Domestic Product, Quarterly
+print(data.tail())
+
+"""
 
 
 
@@ -268,6 +274,7 @@ Between now and 12 mos from now, bond prices will have pressure so interest rate
 2.  Investment grade Corp
 3.  Muni
 
+Paul O. - Economist from Moody's last week said the earliest predictor of a recession is when UE falls below the natural rate of unemployment. This lead is 3yrs, it happened June-2017.
 
 ####OFFICIAL RECESSION DATES
 https://www.nber.org/cycles.html
