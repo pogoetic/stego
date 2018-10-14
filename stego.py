@@ -55,10 +55,11 @@ S&P500 - Measure of total us stock market prices(target)
 Charge Off Rates - FED published for top banks, other source as well
 """
 
-import json, sqlite3, os, sys
+import json, sqlite3, os, sys, datetime
 import pandas as pd
 from fredapikey import apikey
 from fredapi import Fred
+from functools import reduce
 
 pd.set_option('display.max_rows', 50)
 pd.set_option('display.max_columns', 10)
@@ -89,6 +90,17 @@ def dbprocess(path):
         if con:
             con.close()
 
+def dailyresample(data, seriesname, inputtype='series'):
+    #https://pandas.pydata.org/pandas-docs/stable/generated/pandas.DataFrame.resample.html
+    #https://pandas.pydata.org/pandas-docs/stable/timeseries.html#offset-aliases
+    if inputtype=='series':
+        s = data.resample('D').pad()
+        df = s.to_frame(name=seriesname)
+        df.index.name='date'
+    elif inputtype=='dataframe':
+        print('need code')
+    return df
+
 #Create or Connect to existing Sqlite DB
 if not os.path.isfile(str(dir_path)+dbpathname):
     con=dbprocess(path=dir_path)
@@ -109,30 +121,45 @@ rcs_df['Peak month'] = rcs_df['Peak month'].apply(lambda x: '01 {}'.format(x))
 rcs_df['Trough month'] = rcs_df['Trough month'].apply(lambda x: '01 {}'.format(x))
 df_dates = pd.to_datetime(rcs_df[['Peak month','Trough month']].stack(),errors='coerce',format='%d %B %Y').unstack()
 rcs_df=pd.merge(rcs_df, df_dates, left_index=True, right_index=True)[['Peak month_y','Trough month_y','Peak month number','Trough month number','Duration, peak to trough','Duration, trough to peak','Duration, trough to trough','Duration, peak to peak']]
-print(rcs_df.tail())
+#print(rcs_df.head())
+
+#To fill in missing dates using Pandas
+#Upsample the series into 30 second bins and fill the NaN values using the pad method.
+#df.resample('D', on='time').pad()[0:5]
 
 #Trend the S&P by 6mo, 12mo, 24mo. Compare current to prior highs from these periods. 
 #Calc 'months before recession' feature (could be our target)
-data = fred.get_series('SP500')
-print(data.tail())
+SP500 = fred.get_series('SP500')
+SP500 = dailyresample(data=SP500,seriesname='SP500')
+print(SP500.head()) #only goes back to 2008....
+#Deeper daily history in this .xls file from CBOE: http://www.cboe.com/micro/buywrite/dailypricehistory.xls
+#Daily back to 1924 for $8 here: https://macrotrends.dpdcart.com/product/126227
+    #Direct Download Link: http://secure.macrotrends.net/assets/php/data_file_download_daily.php?id=SP500
+#Monthly 'simulated' history by Shiller back to 1857 here: http://www.econ.yale.edu/~shiller/data/ie_data.xls
+#Add CAPE index by Shiller
+#IMPORT PURCHASED S&P DATA, Backfill with SHILLER Data
 
-data = fred.get_series('VIXCLS') #CBOE Volatility Index (VIX), Daily
-print(data.tail())
+VIXCLS = fred.get_series('VIXCLS') #CBOE Volatility Index (VIX), Daily
+VIXCLS = dailyresample(data=VIXCLS,seriesname='VIXCLS')
 
-data = fred.get_series('UMCSENT') # University of Michigan: Consumer Sentiment, Monthly
-print(data.tail())
+UMCSENT = fred.get_series('UMCSENT') # University of Michigan: Consumer Sentiment, Monthly
+UMCSENT = dailyresample(data=UMCSENT,seriesname='UMCSENT')
 
-data = fred.get_series('STLFSI') # St. Louis Fed Financial Stress Index, Weekly
-print(data.tail())
+STLFSI = fred.get_series('STLFSI') # St. Louis Fed Financial Stress Index, Weekly
+STLFSI = dailyresample(data=STLFSI,seriesname='STLFSI')
+#print(STLFSI.tail())
 
-data = fred.get_series('NPPTTL') # Total Nonfarm Private Payroll Employment, Monthly
-print(data.tail())
+NPPTTL = fred.get_series('NPPTTL') # Total Nonfarm Private Payroll Employment, Monthly
+NPPTTL = dailyresample(data=NPPTTL,seriesname='NPPTTL')
+#print(NPPTTL.tail())
 
-data = fred.get_series('PERMIT') # New Private Housing Units Authorized by Building Permits, Monthly
-print(data.tail())
+PERMIT = fred.get_series('PERMIT') # New Private Housing Units Authorized by Building Permits, Monthly
+PERMIT = dailyresample(data=PERMIT,seriesname='PERMIT')
+#print(PERMIT.tail())
 
-data = fred.get_series('DGORDER') # Manufacturers' New Orders: Durable Goods, Seasonally Adjusted, Monthly
-print(data.tail())
+DGORDER = fred.get_series('DGORDER') # Manufacturers' New Orders: Durable Goods, Seasonally Adjusted, Monthly
+DGORDER = dailyresample(data=DGORDER,seriesname='DGORDER')
+#print(DGORDER.tail())
 
 
 """
@@ -141,19 +168,22 @@ A strong labor market prompts the Fed to tighten because an unemployment rate we
 Looking at the current cycle, the labor market is in the early stages of overheating. We see unemployment heading to 3.5 percent, which would be consistent with the pre-recession behavior of the unemployment gap in past cycles.
 """
 #Unemployment Gap  = Unemployment Rate – Natural Rate of Unemployment
-data = fred.get_series('NROU') # Natural Rate of Unemployment (Long-Term), Quarterly
-print(data.tail())
+NROU = fred.get_series('NROU') # Natural Rate of Unemployment (Long-Term), Quarterly
+NROU = dailyresample(data=NROU,seriesname='NROU')
+#print(NROU.tail())
 
-data = fred.get_series('NROUST') # Natural Rate of Unemployment (Short-Term), Quarterly
-print(data.tail())
+NROUST = fred.get_series('NROUST') # Natural Rate of Unemployment (Short-Term), Quarterly
+NROUST = dailyresample(data=NROUST,seriesname='NROUST')
+#print(NROUST.tail())
 
 """
 One of the most reliable and consistent predictors of recession has been the Treasury yield curve. Recessions are always preceded by a flat or inverted yield curve, usually occurring about 12 months before the downturn begins. 
 This occurs with T-bill yields rising as Fed policy becomes restrictive while 10-year yields rise at a slower pace. Looking at the current cycle, we expect that steady increases in the fed funds rate will continue to flatten the yield curve over the next 12–18 months.
 Three Month–10 Year Treasury Yield Curve (bps)
 """
-data = fred.get_series('T10Y2Y') # 10-Year Treasury Constant Maturity Minus 2-Year Treasury Constant Maturity, Daily
-print(data.tail())
+T10Y2Y = fred.get_series('T10Y2Y') # 10-Year Treasury Constant Maturity Minus 2-Year Treasury Constant Maturity, Daily
+T10Y2Y = dailyresample(data=T10Y2Y,seriesname='T10Y2Y')
+#print(T10Y2Y.tail())
 
 
 """
@@ -162,8 +192,9 @@ Looking at the current cycle, aggregate weekly hours growth has been steady, alb
 We expect growth in hours worked to hold up over the coming year before slowing more markedly in 2019.
 Aggregate Weekly Hours Worked, Year-over-Year % Change
 """
-data = fred.get_series('HOHWMN02USM065S') # Weekly Hours Worked: Manufacturing for the United States, Monthly
-print(data.tail())
+HOHWMN02USM065S = fred.get_series('HOHWMN02USM065S') # Weekly Hours Worked: Manufacturing for the United States, Monthly
+HOHWMN02USM065S = dailyresample(data=HOHWMN02USM065S,seriesname='HOHWMN02USM065S')
+#print(HOHWMN02USM065S.tail())
 
 
 """
@@ -172,8 +203,9 @@ Consumers cut back on spending as they start to feel the impact of slowing real 
 Looking at the current cycle, real retail sales growth has been steady at around 2 percent. This is weaker than the historical average, but is consistent with slower-trend gross domestic product (GDP) growth in this cycle.
 """
 #Need to adjust for inflation to get Real
-data = fred.get_series('RETAILSMSA') # Retailers Sales, Seasonally Adjusted, Monthly
-print(data.tail())
+RETAILSMSA = fred.get_series('RETAILSMSA') # Retailers Sales, Seasonally Adjusted, Monthly
+RETAILSMSA = dailyresample(data=RETAILSMSA,seriesname='RETAILSMSA')
+#print(RETAILSMSA.tail())
 
 
 #data = fred.search('yield').T
@@ -185,6 +217,34 @@ print(data.tail())
 
 #Scrape LEI data from web (auto or manual)
 #https://www.conference-board.org/data/bciarchive.cfm?cid=1
+
+
+#Construct main dataframe indexed on our dates
+start_date=datetime.date(1854,12,1)
+end_date=datetime.datetime.today().date()
+days=(end_date-start_date).days
+index = pd.date_range(start=start_date, end=end_date)
+s = pd.Series(range(days+1), index=index)
+main_df = s.to_frame(name='daynum')
+
+#Merge all dataframes into 1 dataset
+#https://stackoverflow.com/questions/23668427/pandas-three-way-joining-multiple-dataframes-on-columns
+dfs = [main_df,SP500,VIXCLS,UMCSENT,STLFSI,NPPTTL,PERMIT,DGORDER,NROU,NROUST,T10Y2Y,HOHWMN02USM065S,RETAILSMSA]
+main_df = reduce(lambda left,right: pd.merge(left,right,how='outer',left_index=True,right_index=True), dfs)
+
+print(main_df[51000:].head())
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -219,22 +279,6 @@ data = fred.get_series('GDPPOT') # Real Potential Gross Domestic Product, Quarte
 print(data.tail())
 
 """
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
