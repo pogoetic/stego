@@ -186,8 +186,11 @@ print(data.tail())
 #Scrape LEI data from web (auto or manual)
 #https://www.conference-board.org/data/bciarchive.cfm?cid=1
 
-
-
+#Additional predictors here:
+#https://cdn.titanvest.com/library/Titan_State_of_Markets.pdf
+#Stock buyback activity, stock earnings growth, level of corp profits, 
+#Leading indicators, such as growth in industrial transports, remain healthy
+# P/E multiples vs. interest rates and inflation
 
 
 
