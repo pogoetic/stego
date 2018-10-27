@@ -121,7 +121,22 @@ rcs_df['Peak month'] = rcs_df['Peak month'].apply(lambda x: '01 {}'.format(x))
 rcs_df['Trough month'] = rcs_df['Trough month'].apply(lambda x: '01 {}'.format(x))
 df_dates = pd.to_datetime(rcs_df[['Peak month','Trough month']].stack(),errors='coerce',format='%d %B %Y').unstack()
 rcs_df=pd.merge(rcs_df, df_dates, left_index=True, right_index=True)[['Peak month_y','Trough month_y','Peak month number','Trough month number','Duration, peak to trough','Duration, trough to peak','Duration, trough to trough','Duration, peak to peak']]
-#print(rcs_df.head())
+rcs_df.rename(index=str, columns={'Peak month_y': 'Peak month','Trough month_y': 'Trough month'}, inplace=True)
+print(rcs_df.head())
+
+#   S&P500 History (Macrotrends data + Shiller)
+sp_df = pd.read_csv(filepath_or_buffer=dir_path+"/required/Macrotrends-s-p-500-index-daily.csv",
+                    delimiter=',',
+                    skiprows=8,
+                    header=0,
+                    usecols=[0,1],
+                    dtype=dtype)
+df_dates = pd.to_datetime(sp_df[['Date']].stack(),errors='coerce',infer_datetime_format=True).unstack()
+sp_df=pd.merge(sp_df, df_dates, left_index=True, right_index=True)[['Date_y','Closing Value']]
+sp_df.rename(index=str, columns={'Date_y': 'Date'}, inplace=True)
+print(sp_df.head())
+print(sp_df[sp_df['Closing Value'].map(isnull()) < 1])
+sys.exit(1)
 
 #To fill in missing dates using Pandas
 #Upsample the series into 30 second bins and fill the NaN values using the pad method.
