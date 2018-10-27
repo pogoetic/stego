@@ -252,13 +252,11 @@ print(main_df[51000:].head())
 
 
 
-
-
-
-
-
-
-
+#Additional predictors here:
+#https://cdn.titanvest.com/library/Titan_State_of_Markets.pdf
+#Stock buyback activity, stock earnings growth, level of corp profits, 
+#Leading indicators, such as growth in industrial transports, remain healthy
+# P/E multiples vs. interest rates and inflation
 
 
 
