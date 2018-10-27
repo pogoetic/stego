@@ -2,3 +2,4 @@ fredapikey.py
 *.db
 *.pyc
 /resources
+.DS_Store
