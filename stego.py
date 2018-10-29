@@ -57,6 +57,7 @@ Charge Off Rates - FED published for top banks, other source as well
 
 import json, sqlite3, os, sys, datetime
 import pandas as pd
+import numpy as np
 from fredapikey import apikey
 from fredapi import Fred
 from functools import reduce
@@ -97,7 +98,7 @@ def dailyresample(data, seriesname, inputtype='series'):
         s = data.resample('D').pad()
         df = s.to_frame(name=seriesname)
         df.index.name='date'
-    elif inputtype=='dataframe':
+    elif inputtype!='series':
         print('need code')
     return df
 
@@ -133,20 +134,40 @@ sp_df = pd.read_csv(filepath_or_buffer=dir_path+"/required/Macrotrends-s-p-500-i
                     dtype=dtype)
 df_dates = pd.to_datetime(sp_df[['Date']].stack(),errors='coerce',infer_datetime_format=True).unstack()
 sp_df=pd.merge(sp_df, df_dates, left_index=True, right_index=True)[['Date_y','Closing Value']]
-sp_df.rename(index=str, columns={'Date_y': 'Date'}, inplace=True)
-print(sp_df.head())
-print(sp_df[sp_df['Closing Value'].map(isnull()) < 1])
-sys.exit(1)
+sp_df.rename(index=str, columns={'Date_y': 'date','Closing Value': 'SP500'}, inplace=True)
+sp_df=sp_df.interpolate() #fill NaN values unsing linear model - averaging with nearest neighbors
+sp_df=sp_df.set_index('date')
+#print(sp_df.tail())
 
-#To fill in missing dates using Pandas
+shiller_df = pd.read_excel(io=dir_path+"/required/ie_data.xls",
+                            sheet_name="Data",
+                            header=7,
+                            usecols="A:B",
+                            dtype={'a':str,'b':float},
+                            nrows=1773)
+shiller_df['Date'] = shiller_df['Date'].apply(lambda x: '{}0'.format(x)[:7]+'.01')
+df_dates = pd.to_datetime(shiller_df[['Date']].stack(),errors='raise',infer_datetime_format=True).unstack()
+shiller_df=pd.merge(shiller_df, df_dates, left_index=True, right_index=True)[['Date_y','P']]
+shiller_df.rename(index=str, columns={'Date_y': 'Date'}, inplace=True)
+shiller_df=shiller_df.set_index('Date')
+shiller_df = dailyresample(data=shiller_df['P'],seriesname='SP500')
+shiller_df=shiller_df.loc[:'1927-12-29'] #remove dates that overlap with our other datasets
+#print(shiller_df.tail())
+
 #Upsample the series into 30 second bins and fill the NaN values using the pad method.
 #df.resample('D', on='time').pad()[0:5]
 
 #Trend the S&P by 6mo, 12mo, 24mo. Compare current to prior highs from these periods. 
 #Calc 'months before recession' feature (could be our target)
-SP500 = fred.get_series('SP500')
+SP500 = fred.get_series('SP500') #only goes back to 2008....
 SP500 = dailyresample(data=SP500,seriesname='SP500')
-print(SP500.head()) #only goes back to 2008....
+SP500 = SP500.loc['2018-10-12':]
+
+SP500=pd.concat([shiller_df,sp_df,SP500]) #union all our normalized SP500 data. 
+print(SP500.head())
+print(SP500.tail())
+
+sys.exit(1)
 #Deeper daily history in this .xls file from CBOE: http://www.cboe.com/micro/buywrite/dailypricehistory.xls
 #Daily back to 1924 for $8 here: https://macrotrends.dpdcart.com/product/126227
     #Direct Download Link: http://secure.macrotrends.net/assets/php/data_file_download_daily.php?id=SP500
