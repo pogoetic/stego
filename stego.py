@@ -91,16 +91,18 @@ def dbprocess(path):
         if con:
             con.close()
 
-def dailyresample(data, seriesname, inputtype='series'):
+def dailyresample(data, seriesname):
     #https://pandas.pydata.org/pandas-docs/stable/generated/pandas.DataFrame.resample.html
     #https://pandas.pydata.org/pandas-docs/stable/timeseries.html#offset-aliases
-    if inputtype=='series':
+    if isinstance(data, pd.Series):
         s = data.resample('D').pad()
         df = s.to_frame(name=seriesname)
         df.index.name='date'
-    elif inputtype!='series':
-        print('need code')
-    return df
+        return df
+    else:
+        print('not a pandas series - need code')
+        raise
+    
 
 #Create or Connect to existing Sqlite DB
 if not os.path.isfile(str(dir_path)+dbpathname):
