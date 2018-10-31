@@ -55,7 +55,7 @@ S&P500 - Measure of total us stock market prices(target)
 Charge Off Rates - FED published for top banks, other source as well
 """
 
-import json, sqlite3, os, sys, datetime
+import json, sqlite3, os, sys, datetime, urllib
 import pandas as pd
 import numpy as np
 from fredapikey import apikey
@@ -111,7 +111,7 @@ cur = con.cursor()
 
 #Historical Data Load
 #   Recession Dates
-dtype={'c':str,'d':str,'e':int,'f':int,'g':int,'h':int,'i':int,'j':int}
+dtype = {'c':str,'d':str,'e':int,'f':int,'g':int,'h':int,'i':int,'j':int}
 rcs_df = pd.read_excel(io=dir_path+"/required/NBER chronology.xlsx",
                     sheet_name=0,
                     header=2,
@@ -121,11 +121,12 @@ rcs_df = pd.read_excel(io=dir_path+"/required/NBER chronology.xlsx",
 rcs_df['Peak month'] = rcs_df['Peak month'].apply(lambda x: '01 {}'.format(x))
 rcs_df['Trough month'] = rcs_df['Trough month'].apply(lambda x: '01 {}'.format(x))
 df_dates = pd.to_datetime(rcs_df[['Peak month','Trough month']].stack(),errors='coerce',format='%d %B %Y').unstack()
-rcs_df=pd.merge(rcs_df, df_dates, left_index=True, right_index=True)[['Peak month_y','Trough month_y','Peak month number','Trough month number','Duration, peak to trough','Duration, trough to peak','Duration, trough to trough','Duration, peak to peak']]
+rcs_df = pd.merge(rcs_df, df_dates, left_index=True, right_index=True)[['Peak month_y','Trough month_y','Peak month number','Trough month number','Duration, peak to trough','Duration, trough to peak','Duration, trough to trough','Duration, peak to peak']]
 rcs_df.rename(index=str, columns={'Peak month_y': 'Peak month','Trough month_y': 'Trough month'}, inplace=True)
 print(rcs_df.head())
 
-#   S&P500 History (Macrotrends data + Shiller)
+#   S&P500 History (Macrotrends data from Dec-1927)
+#   https://macrotrends.dpdcart.com/product/126227
 sp_df = pd.read_csv(filepath_or_buffer=dir_path+"/required/Macrotrends-s-p-500-index-daily.csv",
                     delimiter=',',
                     skiprows=8,
@@ -133,47 +134,45 @@ sp_df = pd.read_csv(filepath_or_buffer=dir_path+"/required/Macrotrends-s-p-500-i
                     usecols=[0,1],
                     dtype=dtype)
 df_dates = pd.to_datetime(sp_df[['Date']].stack(),errors='coerce',infer_datetime_format=True).unstack()
-sp_df=pd.merge(sp_df, df_dates, left_index=True, right_index=True)[['Date_y','Closing Value']]
+sp_df = pd.merge(sp_df, df_dates, left_index=True, right_index=True)[['Date_y','Closing Value']]
 sp_df.rename(index=str, columns={'Date_y': 'date','Closing Value': 'SP500'}, inplace=True)
-sp_df=sp_df.interpolate() #fill NaN values unsing linear model - averaging with nearest neighbors
-sp_df=sp_df.set_index('date')
-#print(sp_df.tail())
+sp_df = sp_df.interpolate() #fill NaN values unsing linear model - averaging with nearest neighbors
+sp_df = sp_df.set_index('date')
+sp_df = dailyresample(data=sp_df['SP500'],seriesname='SP500')
 
+#   S&P500 History (Shiller simulated monthly data from Jan-1871)
+#   http://www.econ.yale.edu/~shiller/data/ie_data.xls
+urllib.request.urlretrieve('http://www.econ.yale.edu/~shiller/data/ie_data.xls','./required/ie_data.xls')
 shiller_df = pd.read_excel(io=dir_path+"/required/ie_data.xls",
                             sheet_name="Data",
                             header=7,
-                            usecols="A:B",
-                            dtype={'a':str,'b':float},
+                            usecols="A:B,K",
                             nrows=1773)
 shiller_df['Date'] = shiller_df['Date'].apply(lambda x: '{}0'.format(x)[:7]+'.01')
 df_dates = pd.to_datetime(shiller_df[['Date']].stack(),errors='raise',infer_datetime_format=True).unstack()
-shiller_df=pd.merge(shiller_df, df_dates, left_index=True, right_index=True)[['Date_y','P']]
+shiller_df = pd.merge(shiller_df, df_dates, left_index=True, right_index=True)[['Date_y','P','CAPE']]
 shiller_df.rename(index=str, columns={'Date_y': 'Date'}, inplace=True)
-shiller_df=shiller_df.set_index('Date')
-shiller_df = dailyresample(data=shiller_df['P'],seriesname='SP500')
-shiller_df=shiller_df.loc[:'1927-12-29'] #remove dates that overlap with our other datasets
-#print(shiller_df.tail())
+shiller_df = shiller_df.set_index('Date')
+shiller_sp500 = dailyresample(data=shiller_df['P'],seriesname='SP500')
+shiller_sp500 = shiller_sp500.loc[:'1927-12-29'] #remove dates that overlap with our other datasets
 
-#Upsample the series into 30 second bins and fill the NaN values using the pad method.
-#df.resample('D', on='time').pad()[0:5]
-
-#Trend the S&P by 6mo, 12mo, 24mo. Compare current to prior highs from these periods. 
-#Calc 'months before recession' feature (could be our target)
-SP500 = fred.get_series('SP500') #only goes back to 2008....
+#   S&P500 History from FRED goes back to 2008
+SP500 = fred.get_series('SP500')
 SP500 = dailyresample(data=SP500,seriesname='SP500')
 SP500 = SP500.loc['2018-10-12':]
 
-SP500=pd.concat([shiller_df,sp_df,SP500]) #union all our normalized SP500 data. 
-print(SP500.head())
-print(SP500.tail())
+SP500=pd.concat([shiller_sp500,sp_df,SP500]) #union all our normalized SP500 data. 
 
-sys.exit(1)
-#Deeper daily history in this .xls file from CBOE: http://www.cboe.com/micro/buywrite/dailypricehistory.xls
-#Daily back to 1924 for $8 here: https://macrotrends.dpdcart.com/product/126227
-    #Direct Download Link: http://secure.macrotrends.net/assets/php/data_file_download_daily.php?id=SP500
-#Monthly 'simulated' history by Shiller back to 1857 here: http://www.econ.yale.edu/~shiller/data/ie_data.xls
-#Add CAPE index by Shiller
-#IMPORT PURCHASED S&P DATA, Backfill with SHILLER Data
+
+#Trend the S&P by 6mo, 12mo, 24mo. Compare current to prior highs from these periods. 
+#Calc 'months before recession' feature (could be our target)
+
+
+
+#CAPE index by Shiller
+shiller_cape = dailyresample(data=shiller_df['CAPE'],seriesname='CAPE')
+shiller_cape = shiller_cape.loc['1881-01-01':] #remove NaN dates
+#print(shiller_cape.tail())
 
 VIXCLS = fred.get_series('VIXCLS') #CBOE Volatility Index (VIX), Daily
 VIXCLS = dailyresample(data=VIXCLS,seriesname='VIXCLS')
