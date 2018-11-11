@@ -125,7 +125,7 @@ rcs_df['Trough month'] = rcs_df['Trough month'].apply(lambda x: '01 {}'.format(x
 df_dates = pd.to_datetime(rcs_df[['Peak month','Trough month']].stack(),errors='coerce',format='%d %B %Y').unstack()
 rcs_df = pd.merge(rcs_df, df_dates, left_index=True, right_index=True)[['Peak month_y','Trough month_y','Peak month number','Trough month number','Duration, peak to trough','Duration, trough to peak','Duration, trough to trough','Duration, peak to peak']]
 rcs_df.rename(index=str, columns={'Peak month_y': 'Peak month','Trough month_y': 'Trough month'}, inplace=True)
-print(rcs_df.head())
+print(rcs_df)
 
 #   S&P500 History (Macrotrends data from Dec-1927)
 #   https://macrotrends.dpdcart.com/product/126227
